@@ -1,0 +1,10 @@
+venv/
+**/__pycache__/
+db.sqlite3
+medien/diagramme/*.png
+medien/diagramme/*.svg
+medien/diagramme/*.pdf
+medien/uploads/
+*.pyc
+.env
+.DS_Store
