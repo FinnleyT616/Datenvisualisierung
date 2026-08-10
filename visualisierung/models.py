@@ -47,6 +47,12 @@ class Datensatz(models.Model):
         """Diese Methode gibt den Namen zurück, damit der Datensatz im Verwaltungsbereich verständlich angezeigt wird."""
         return self.name
 
+    class Meta:
+        """Diese Einstellungen geben dem Modell im Verwaltungsbereich einen richtigen deutschen Namen in der Einzahl und in der Mehrzahl."""
+
+        verbose_name = "Datensatz"
+        verbose_name_plural = "Datensätze"
+
 
 class Datenpunkt(models.Model):
     """Dieses Modell speichert einen einzelnen Wert innerhalb eines Datensatzes. Mehrere Datenpunkte bilden zusammen die Grundlage für ein Diagramm."""
@@ -74,6 +80,8 @@ class Datenpunkt(models.Model):
         """Diese Einstellung sorgt dafür, dass Datenpunkte bei Abfragen immer nach ihrer festgelegten Reihenfolge sortiert werden."""
 
         ordering = ["reihenfolge"]
+        verbose_name = "Datenpunkt"
+        verbose_name_plural = "Datenpunkte"
 
 
 class Diagramm(models.Model):
@@ -103,3 +111,9 @@ class Diagramm(models.Model):
 
     # Dieser Zeitpunkt wird beim ersten Speichern des Diagramms automatisch gesetzt und bleibt danach unverändert. So kann später nachvollzogen werden, wann eine Darstellung erstellt wurde.
     erstellt_am = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        """Diese Einstellungen geben dem Modell im Verwaltungsbereich einen richtigen deutschen Namen in der Einzahl und in der Mehrzahl."""
+
+        verbose_name = "Diagramm"
+        verbose_name_plural = "Diagramme"
