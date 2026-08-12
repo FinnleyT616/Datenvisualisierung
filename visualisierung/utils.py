@@ -238,3 +238,141 @@ def daten_validieren(dataframe):
         return False, "Die Daten enthalten keine numerischen Werte für ein Diagramm."
 
     return True, ""
+
+
+def datentyp_erkennen(dataframe):
+    """Analysiert die Struktur einer Pandas Tabelle und wählt automatisch einen passenden Diagrammtyp aus. Die Entscheidung ist auf die drei Typen Linie, Balken und Kreis beschränkt und wird zusammen mit einer einfachen deutschen Begründung zurückgegeben. Dabei werden Zeitreihen, Kategorien und mögliche Anteilswerte in einer festen und nachvollziehbaren Reihenfolge untersucht."""
+
+    # Am Anfang wird geprüft, ob wirklich eine Pandas Tabelle mit mindestens zwei Spalten und mindestens einer Zeile vorliegt. Ohne eine X Spalte, eine weitere Wertespalte und echte Daten ist keine sichere Erkennung möglich, deshalb wird in diesem Fall der vorgesehene Balken Fallback mit einer ehrlichen Begründung verwendet.
+    if (
+        not isinstance(dataframe, pd.DataFrame)
+        or len(dataframe.columns) < 2
+        or dataframe.empty
+    ):
+        return {
+            "typ": "balken",
+            "begruendung": "Die Daten enthalten zu wenige Spalten oder Zeilen für eine sichere automatische Erkennung. Deshalb wird als einfache und gut lesbare Darstellung ein Balkendiagramm verwendet.",
+        }
+
+    # Jede Spalte wird einzeln untersucht, damit die Funktion zwischen Zahlen und Text unterscheiden kann. Eine Spalte gilt als numerisch, wenn alle vorhandenen Werte ohne Fehler in Zahlen umgewandelt werden können und wenigstens ein echter Wert vorhanden ist.
+    numerische_spalten = []
+    text_spalten = []
+    umgewandelte_spalten = {}
+    for spaltenname in dataframe.columns:
+        vorhandene_werte = dataframe[spaltenname].dropna()
+        umgewandelte_werte = pd.to_numeric(
+            vorhandene_werte,
+            errors="coerce",
+        )
+        ist_numerisch = (
+            not vorhandene_werte.empty
+            and umgewandelte_werte.notna().all()
+        )
+
+        if ist_numerisch:
+            numerische_spalten.append(spaltenname)
+            umgewandelte_spalten[spaltenname] = pd.to_numeric(
+                dataframe[spaltenname],
+                errors="coerce",
+            )
+        else:
+            text_spalten.append(spaltenname)
+
+    # Die erste Spalte wird immer als X Spalte betrachtet, weil sie bei üblichen Tabellen die Reihenfolge, Zeit oder Kategorien enthält. Als Y Spalte wird bevorzugt die erste numerische Spalte rechts davon verwendet, damit die dargestellten Werte nicht mit einer numerischen X Achse verwechselt werden.
+    x_spalte = dataframe.columns[0]
+    numerische_y_spalten = [
+        spaltenname
+        for spaltenname in dataframe.columns[1:]
+        if spaltenname in numerische_spalten
+    ]
+
+    # Falls rechts von der X Spalte keine vollständige Zahlenspalte erkannt wurde, fehlt eine verlässliche Grundlage für eine Linie oder einen Kreis. Ein Balkendiagramm ist dann der verständlichste Fallback, weil es auch bei gemischten oder noch nicht ganz sauberen Daten am leichtesten zu lesen ist.
+    if not numerische_y_spalten:
+        return {
+            "typ": "balken",
+            "begruendung": "Neben der ersten Spalte wurde keine vollständig numerische Wertespalte erkannt. Deshalb wird ein Balkendiagramm verwendet, weil es auch für gemischte Kategorien und Werte gut verständlich ist.",
+        }
+
+    y_spalte = numerische_y_spalten[0]
+    y_werte = umgewandelte_spalten[y_spalte].dropna()
+
+    # Nun wird die erste Spalte auf eine mögliche Zeitreihe geprüft. Dafür muss sie vollständig aus Zahlen bestehen, mindestens zwei verschiedene Werte enthalten und in aufsteigender Reihenfolge stehen, denn ein Verlauf benötigt eine erkennbare Richtung von früher nach später.
+    x_ist_numerisch = x_spalte in numerische_spalten
+    x_werte = None
+    x_ist_aufsteigend = False
+    if x_ist_numerisch:
+        x_werte = umgewandelte_spalten[x_spalte].dropna()
+        x_ist_aufsteigend = (
+            len(x_werte) >= 2
+            and x_werte.is_unique
+            and x_werte.is_monotonic_increasing
+        )
+
+    # Jahreszahlen werden daran erkannt, dass sie ganze Zahlen in einem sinnvollen Bereich sind und aufsteigend angeordnet wurden. Kleine Lücken zwischen Jahren sind erlaubt, weil echte Datensätze nicht zwingend für jedes einzelne Jahr einen Wert enthalten.
+    x_enthaelt_jahreszahlen = False
+    if x_ist_aufsteigend:
+        x_enthaelt_jahreszahlen = (
+            x_werte.between(1000, 2100).all()
+            and (x_werte % 1 == 0).all()
+        )
+
+    # Fortlaufende Zahlen werden etwas strenger als Jahreszahlen geprüft. Die Abstände zwischen den sortierten Werten müssen gleich gross und positiv sein, damit die Punkte tatsächlich eine gleichmässige Reihenfolge und nicht nur beliebige Nummern darstellen.
+    x_enthaelt_fortlaufende_zahlen = False
+    if x_ist_aufsteigend:
+        abstaende = x_werte.diff().dropna()
+        x_enthaelt_fortlaufende_zahlen = (
+            not abstaende.empty
+            and (abstaende > 0).all()
+            and abstaende.nunique() == 1
+        )
+
+    # Eine erkannte Zeitreihe erhält Vorrang vor einem Kreisdiagramm, weil die Reihenfolge der X Werte eine wichtige Information enthält. Eine Linie verbindet die Werte und zeigt dadurch Veränderungen sowie Entwicklungen besonders deutlich.
+    if x_enthaelt_jahreszahlen:
+        return {
+            "typ": "linie",
+            "begruendung": "Die erste Spalte enthält aufsteigende Jahreszahlen und eine weitere Spalte enthält numerische Werte. Deshalb eignet sich ein Liniendiagramm am besten, um den Verlauf über die Zeit darzustellen.",
+        }
+
+    if x_enthaelt_fortlaufende_zahlen:
+        return {
+            "typ": "linie",
+            "begruendung": "Die erste Spalte enthält fortlaufende Zahlen und eine weitere Spalte enthält numerische Werte. Deshalb eignet sich ein Liniendiagramm am besten, um die Entwicklung in der richtigen Reihenfolge darzustellen.",
+        }
+
+    # Erst nach der Prüfung auf eine Zeitreihe wird untersucht, ob die Zeilen Anteile eines Ganzen darstellen könnten. Für einen Kreis müssen weniger als zehn Kategorien vorhanden sein, alle Y Werte müssen echt vorhanden und positiv sein und ihre Summe muss ungefähr hundert ergeben.
+    anzahl_kategorien = dataframe[x_spalte].dropna().nunique()
+    wenige_kategorien = 0 < anzahl_kategorien < 10
+    alle_y_werte_vorhanden = len(y_werte) == len(dataframe)
+    alle_y_werte_positiv = (
+        not y_werte.empty
+        and (y_werte > 0).all()
+    )
+    summe_ist_ungefaehr_hundert = (
+        not y_werte.empty
+        and 99 <= y_werte.sum() <= 101
+    )
+
+    # Die kleine Toleranz von einem Punkt erlaubt gerundete Prozentwerte, deren Summe knapp unter oder über hundert liegt. Sind alle Bedingungen erfüllt, ist ein Kreisdiagramm sehr wahrscheinlich passend, weil es die Anteile am Ganzen direkt sichtbar macht.
+    if (
+        wenige_kategorien
+        and alle_y_werte_vorhanden
+        and alle_y_werte_positiv
+        and summe_ist_ungefaehr_hundert
+    ):
+        return {
+            "typ": "kreis",
+            "begruendung": "Die erste Spalte enthält wenige Kategorien und alle Werte sind positiv. Die Summe der Werte liegt ungefähr bei 100, deshalb stellen sie wahrscheinlich Anteile eines Ganzen dar und eignen sich gut für ein Kreisdiagramm.",
+        }
+
+    # Eine Textspalte mit numerischen Y Werten beschreibt normalerweise verschiedene benannte Kategorien. Balken erlauben einen direkten Vergleich ihrer Grössen und bleiben auch verständlich, wenn die Werte keine Anteile von hundert bilden.
+    if x_spalte in text_spalten:
+        return {
+            "typ": "balken",
+            "begruendung": "Die erste Spalte enthält Text oder Kategorien und eine weitere Spalte enthält numerische Werte. Da die Werte keine eindeutigen Anteile von 100 bilden, eignet sich ein Balkendiagramm am besten für den Vergleich.",
+        }
+
+    # Wenn keine der vorherigen Regeln eindeutig passt, wird bewusst ein Balkendiagramm verwendet. Dieser Typ ist der sicherste Fallback, weil einzelne Werte ohne angenommene zeitliche Verbindung und ohne angenommene Anteile gezeigt werden können.
+    return {
+        "typ": "balken",
+        "begruendung": "Die Daten bilden weder eine klare Zeitreihe noch eindeutige Anteile eines Ganzen. Deshalb wird als gut verständliche Standarddarstellung ein Balkendiagramm verwendet.",
+    }
